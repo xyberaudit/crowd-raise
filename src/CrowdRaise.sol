@@ -5,9 +5,9 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 import {PriceConverter} from "./libraries/PriceConverter.sol";
 
 error CrowdRaise__NoFund();
+error CrowdRaise__GoalMet();
 error CrowdRaise__NotOwner();
 error CrowdRaise__RefundFailed();
-error CrowdRaise__NonRefundable();
 error CrowdRaise__GoalNotReached();
 error CrowdRaise__WithdrawFailed();
 error CrowdRaise__DeadlineNotReached();
@@ -79,7 +79,7 @@ contract CrowdRaise {
     function refund() public {
         uint256 funding = PriceConverter.getConversionRate(s_totalFunded, s_priceFeed);
         require(block.timestamp > i_deadline, CrowdRaise__DeadlineNotReached());
-        require(funding < i_usdGoal, CrowdRaise__NonRefundable());
+        require(funding < i_usdGoal, CrowdRaise__GoalMet());
         if (s_addressToAmountFunded[msg.sender] == 0) revert CrowdRaise__NoFund();
 
         uint256 fundAmount = s_addressToAmountFunded[msg.sender];

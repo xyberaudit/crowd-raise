@@ -9,14 +9,13 @@ contract CrowdRaiseTest is Test {
     CrowdRaise crowdRaise;
 
     uint256 public constant SEND_VALUE = 0.1 ether;
+    uint256 public constant ETH_TO_MEET_GOAL = 0.4 ether;
     uint256 public constant STARTING_BALANCE = 100 ether;
     uint256 public constant USD_GOAL = 1000e18;
     uint256 public constant DAYS = 7;
 
-    uint160 public constant USER_NUMBER = 11; // Random user
-    uint160 public constant OWNER_NUMBER = 46; // Custom owner
-    address public constant USER = address(USER_NUMBER);
-    address public constant OWNER = address(OWNER_NUMBER);
+    address public USER = makeAddr("user");
+    address public OWNER = makeAddr("owner");
 
     modifier funded() {
         vm.prank(USER);
@@ -44,7 +43,7 @@ contract CrowdRaiseTest is Test {
         crowdRaise.fund();
     }
 
-    function testCantFundAfterDeadline() public {
+    function testFundFailsfterDeadline() public {
         vm.warp(crowdRaise.getDeadline() + 1);
         vm.prank(USER);
         vm.expectRevert();
@@ -100,28 +99,22 @@ contract CrowdRaiseTest is Test {
 
     function testWithdrawSuccessAfterDeadline() public {
         address owner = crowdRaise.getOwner();
-        uint256 numberOfFunders = 4;
-        console.log(owner.balance);
+        uint256 numberOfFunders = 3;
 
         // Fund contract with dummy address
-        for (uint160 i = 1; i < numberOfFunders + 1; i++) {
-            vm.deal(address(i), STARTING_BALANCE);
-            vm.prank(address(i));
-            crowdRaise.fund{value: 10e18}();
+        for (uint160 i = 0; i < numberOfFunders; i++) {
+            vm.deal(address(i + 1), STARTING_BALANCE);
+            vm.prank(address(i + 1));
+            crowdRaise.fund{value: ETH_TO_MEET_GOAL}();
         }
 
         vm.warp(crowdRaise.getDeadline() + 1);
-        assertEq(address(crowdRaise).balance, 40 ether);
         uint256 balanceBefore = owner.balance;
-        console.log(balanceBefore);
-
         vm.prank(owner);
         crowdRaise.withdraw();
         uint256 balanceAfter = owner.balance;
-        console.log(owner.balance);
-        console.log(balanceAfter);
 
-        assertEq(balanceAfter - balanceBefore, 40 ether);
+        assertEq(balanceAfter - balanceBefore, ETH_TO_MEET_GOAL * numberOfFunders);
         assertEq(address(crowdRaise).balance, 0);
         assertEq(crowdRaise.getFunderCount(), 0);
     }
@@ -129,4 +122,84 @@ contract CrowdRaiseTest is Test {
     /* ==================================================================================
      *     REFUND TEST
      * ================================================================================== */
+
+    function testRefundFailsBeforeDeadline() public funded {
+        vm.prank(USER);
+        vm.expectRevert();
+        crowdRaise.refund();
+    }
+
+    function testRefundFailsGoalMet() public {
+        vm.prank(USER);
+        crowdRaise.fund{value: ETH_TO_MEET_GOAL}();
+        vm.warp(crowdRaise.getDeadline() + 1);
+        vm.prank(USER);
+        vm.expectRevert();
+        crowdRaise.refund();
+    }
+
+    function testRefundUpdatesUserBalance() public funded {
+        vm.warp(crowdRaise.getDeadline() + 1);
+
+        uint256 balanceBefore = USER.balance;
+        vm.prank(USER);
+        crowdRaise.refund();
+        uint256 balanceAfter = USER.balance;
+
+        assertEq(balanceAfter - balanceBefore, SEND_VALUE);
+        assertEq(crowdRaise.getAddressToAmountFunded(USER), 0);
+    }
+
+    function testRefundFailsNeverFund() public {
+        vm.warp(crowdRaise.getDeadline() + 1);
+        vm.prank(USER);
+        vm.expectRevert();
+        crowdRaise.refund();
+    }
+
+    function testMultipleFundersRefund() public {
+        uint256 numberOfFunders = 3;
+        address[] memory funders = new address[](numberOfFunders);
+
+        for (uint160 i = 0; i < numberOfFunders; i++) {
+            funders[i] = address(i + 1);
+            vm.deal(funders[i], STARTING_BALANCE);
+        }
+
+        for (uint160 i = 0; i < numberOfFunders; i++) {
+            vm.deal(funders[i], STARTING_BALANCE);
+            vm.prank(funders[i]);
+            crowdRaise.fund{value: SEND_VALUE}();
+        }
+
+        vm.warp(crowdRaise.getDeadline() + 1);
+        for (uint160 i = 0; i < numberOfFunders; i++) {
+            uint256 balanceBefore = funders[i].balance;
+            vm.prank(funders[i]);
+            crowdRaise.refund();
+            uint256 balanceAfter = address(i + 1).balance;
+
+            assertEq(balanceAfter - balanceBefore, SEND_VALUE);
+            assertEq(crowdRaise.getAddressToAmountFunded(funders[i]), 0);
+        }
+    }
+
+    function testFundersCantRefundTwice() public funded {
+        vm.warp(crowdRaise.getDeadline() + 1);
+        vm.prank(USER);
+        crowdRaise.refund();
+        vm.prank(USER);
+        vm.expectRevert();
+        crowdRaise.refund();
+    }
+
+    function testContractBalanceReducedAfterRefund() public funded {
+        uint256 balanceBefore = address(crowdRaise).balance;
+        vm.warp(crowdRaise.getDeadline() + 1);
+        vm.prank(USER);
+        crowdRaise.refund();
+        uint256 balanceAfter = address(crowdRaise).balance;
+        assertEq(balanceBefore, SEND_VALUE);
+        assertEq(balanceAfter, 0);
+    }
 }
