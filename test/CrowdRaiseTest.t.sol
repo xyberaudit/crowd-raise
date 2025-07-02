@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {DeployCrowdRaise} from "../../script/DeployCrowdRaise.s.sol";
-import {CrowdRaise} from "../../src/CrowdRaise.sol";
+import {CrowdRaise} from "../src/CrowdRaise.sol";
 import {Test, console} from "forge-std/Test.sol";
+import {DeployCrowdRaise} from "../script/DeployCrowdRaise.s.sol";
 
 contract CrowdRaiseTest is Test {
     CrowdRaise crowdRaise;
